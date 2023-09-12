@@ -77,10 +77,10 @@ func main() {
 		story := <-ch
 		storyList = append(storyList, story)
 	}
-	//fmt.Printf("%+v\n", storyList)
 	fmt.Printf("Fetched %d stories\n", len(storyList))
+	// order the list by descending score
 	sort.Slice(storyList, func(i, j int) bool {
-		return storyList[i].Score < storyList[j].Score
+		return storyList[i].Score > storyList[j].Score
 	})
 
 	file, _ := json.MarshalIndent(storyList, "", " ")
