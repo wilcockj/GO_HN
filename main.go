@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io"
 	"log"
 	"net/http"
@@ -63,8 +64,14 @@ type Item struct {
 	HN_Url      string
 }
 
+type HNPageData struct {
+	PageTitle string
+	Items     []Item
+}
+
 func main() {
 	stories := fetchStories()
+
 	ch := make(chan Item)
 	var storycount = 0
 	for _, id := range stories {
@@ -78,6 +85,7 @@ func main() {
 		storyList = append(storyList, story)
 	}
 	fmt.Printf("Fetched %d stories\n", len(storyList))
+
 	// order the list by descending score
 	sort.Slice(storyList, func(i, j int) bool {
 		return storyList[i].Score > storyList[j].Score
@@ -87,6 +95,34 @@ func main() {
 
 	_ = os.WriteFile("test.json", file, 0644)
 
+	fs := http.FileServer(http.Dir("static"))
+	http.Handle("/static/", http.StripPrefix("/static/", fs))
+
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		/*data := HNClientData{
+			PageTitle: "HN Client",
+			Todos: []Todo{
+				{Title: "Task 1", Done: false},
+				{Title: "Task 2", Done: true},
+				{Title: "Task 3", Done: true},
+			},
+		}*/
+        // Here so it can live update on refresh
+        tmpl := template.Must(template.ParseFiles("layout.html"))
+		start := time.Now()
+		data := HNPageData{
+			PageTitle: "Test HN Client",
+            Items:     storyList[0:50],
+		}
+
+		tmpl.Execute(w, data)
+		duration := time.Since(start)
+		fmt.Println(duration)
+	})
+
+	fmt.Printf("Starting to serve\n")
+
+	http.ListenAndServe(":9060", nil)
 }
 
 func fetchStories() []int {
