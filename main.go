@@ -38,6 +38,8 @@ descendants 	In the case of stories or polls, the total comment count.
 
 type PostType string
 
+var client http.Client
+
 const (
 	Job     PostType = "job"
 	Story            = "story"
@@ -86,6 +88,12 @@ func isFromLastDay(story Item) bool {
 }
 
 func main() {
+	// to change the flags on the default logger
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	client = http.Client{
+		Timeout: time.Second * 2,
+	}
+
 	start := time.Now()
 	stories := fetchStories()
 
@@ -216,10 +224,6 @@ func getStoryItemInfo(stories *[]int) []Item {
 
 func fetchStories() []int {
 	url := "https://hacker-news.firebaseio.com/v0/topstories.json?print=pretty"
-	client := http.Client{
-		Timeout: time.Second * 2,
-	}
-
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		log.Fatal(err)
@@ -256,9 +260,6 @@ func GetStoryInfo(ch chan Item, id int) {
 	url := "https://hacker-news.firebaseio.com/v0/item/" + strconv.Itoa(id) + ".json?print=pretty"
 
 	//fmt.Println(url)
-	client := http.Client{
-		Timeout: time.Second * 2,
-	}
 
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
