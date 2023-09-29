@@ -7,7 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
+	//	"os"
 	"sort"
 	"strconv"
 	"time"
@@ -69,50 +69,65 @@ type HNPageData struct {
 	Items     []Item
 }
 
+func isFromLastDay(story Item) bool {
+	// Get the current time
+	currentTime := time.Now()
+
+	// Convert current time to Unix timestamp
+	currentTimestamp := currentTime.Unix()
+
+	// Calculate the timestamp for the same time on the previous day
+	oneDayAgoTimestamp := currentTimestamp - 24*60*60 // 24 hours * 60 minutes/hour * 60 seconds/minute
+	if story.Time >= oneDayAgoTimestamp && story.Time <= currentTimestamp {
+		return true
+	} else {
+		return false
+	}
+}
+
 func main() {
+	start := time.Now()
 	stories := fetchStories()
 
-	ch := make(chan Item)
-	var storycount = 0
-	for _, id := range stories {
-		storycount += 1
-		go GetStoryInfo(ch, id)
-	}
-
-	var storyList []Item
-	for i := 0; i < storycount; i++ {
-		story := <-ch
-		storyList = append(storyList, story)
-	}
-	fmt.Printf("Fetched %d stories\n", len(storyList))
-
-	// order the list by descending score
-	sort.Slice(storyList, func(i, j int) bool {
-		return storyList[i].Score > storyList[j].Score
+	sort.Slice(stories, func(i, j int) bool {
+		return stories[i] > stories[j]
 	})
 
-	file, _ := json.MarshalIndent(storyList, "", " ")
+	fmt.Printf("Fetching story ids took %s\n", time.Since(start))
 
-	_ = os.WriteFile("test.json", file, 0644)
+	storyList := getStoryItemInfo(&stories)
+
+	fmt.Printf("Fetched %d stories\n", len(storyList))
+
+	duration := time.Since(start)
+
+	storyList = sortStoriesAndReturnTopN(storyList, 50)
+
+	fmt.Printf("Fetching stories took %s\n", duration)
+
+	updateChannel := make(chan []Item)
+	go fetchStoriesPeriodically(updateChannel)
+
+	go func() {
+		for newStories := range updateChannel {
+			// Update the global storyList variable with new stories.
+			// You need to ensure that updates to storyList are safe and do not cause race conditions.
+			// You might need another mechanism for safely updating storyList, like a mutex or another channel.
+			storyList = updateStories(newStories, storyList)
+		}
+	}()
 
 	fs := http.FileServer(http.Dir("static"))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		/*data := HNClientData{
-			PageTitle: "HN Client",
-			Todos: []Todo{
-				{Title: "Task 1", Done: false},
-				{Title: "Task 2", Done: true},
-				{Title: "Task 3", Done: true},
-			},
-		}*/
-        // Here so it can live update on refresh
-        tmpl := template.Must(template.ParseFiles("layout.html"))
+
+		// Here so it can live update on refresh
+		tmpl := template.Must(template.ParseFiles("layout.html"))
 		start := time.Now()
 		data := HNPageData{
 			PageTitle: "Test HN Client",
-            Items:     storyList[0:50],
+			Items:     storyList,
 		}
 
 		tmpl.Execute(w, data)
@@ -122,7 +137,81 @@ func main() {
 
 	fmt.Printf("Starting to serve\n")
 
-	http.ListenAndServe(":9060", nil)
+	log.Fatal(http.ListenAndServe(":9060", nil))
+
+}
+
+func updateStories(newStories, oldStories []Item) []Item {
+	// This function should handle merging, sorting, and filtering of stories.
+	// For simplicity, let's assume you just replace old stories with new ones.
+	// In a real application, you'd probably want to merge and sort the lists in some way.
+	return newStories
+}
+
+func fetchStoriesPeriodically(updateChannel chan []Item) {
+	ticker := time.NewTicker(20 * time.Second) // adjust the interval as necessary
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			log.Println("Fetching new stories")
+			newStories := fetchStories()
+			updateChannel <- sortStoriesAndReturnTopN(getStoryItemInfo(&newStories), 50)
+		}
+	}
+}
+
+func sortStoriesAndReturnTopN(storyList []Item, top_n int) []Item {
+	// order the list by descending score
+	sort.Slice(storyList, func(i, j int) bool {
+		return storyList[i].Score > storyList[j].Score
+	})
+	storyList = storyList[0:top_n]
+	return storyList
+}
+
+func getNewStoryIds(stories []int) []int {
+	newStories := fetchStories()
+
+	sort.Slice(newStories, func(i, j int) bool {
+		return stories[i] > stories[j]
+	})
+
+	var unseenStories []int
+	var found_in_list bool
+	for _, id := range newStories {
+		found_in_list = false
+		for _, val := range stories {
+			if val == id {
+				found_in_list = true
+				break
+			}
+		}
+		if !found_in_list {
+			unseenStories = append(unseenStories, id)
+		}
+
+	}
+	return unseenStories
+}
+
+func getStoryItemInfo(stories *[]int) []Item {
+	ch := make(chan Item)
+	var storycount = 0
+	for _, id := range *stories {
+		storycount += 1
+		go GetStoryInfo(ch, id)
+	}
+
+	var storyList []Item
+	for i := 0; i < storycount; i++ {
+		story := <-ch
+		if isFromLastDay(story) {
+			storyList = append(storyList, story)
+		}
+	}
+	return storyList
 }
 
 func fetchStories() []int {
