@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	//	"os"
+	"math/rand"
 	"sort"
 	"strconv"
 	"time"
@@ -91,7 +92,7 @@ func main() {
 	// to change the flags on the default logger
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	client = http.Client{
-		Timeout: time.Second * 2,
+		Timeout: time.Second * 10,
 	}
 
 	start := time.Now()
@@ -128,10 +129,10 @@ func main() {
 	fs := http.FileServer(http.Dir("static"))
 	http.Handle("/static/", http.StripPrefix("/static/", fs))
 
+	tmpl := template.Must(template.ParseFiles("layout.html"))
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 
 		// Here so it can live update on refresh
-		tmpl := template.Must(template.ParseFiles("layout.html"))
 		start := time.Now()
 		data := HNPageData{
 			PageTitle: "Test HN Client",
@@ -257,6 +258,8 @@ func fetchStories() []int {
 
 func GetStoryInfo(ch chan Item, id int) {
 	//fmt.Printf("Fetching story %d\n", id)
+	randtime := time.Duration(rand.Intn(5))
+	time.Sleep(randtime * time.Second)
 	url := "https://hacker-news.firebaseio.com/v0/item/" + strconv.Itoa(id) + ".json?print=pretty"
 
 	//fmt.Println(url)
@@ -269,7 +272,16 @@ func GetStoryInfo(ch chan Item, id int) {
 	req.Header.Set("User-Agent", "John")
 
 	res, getErr := client.Do(req)
+
 	if getErr != nil {
+		for getErr != nil {
+			res, getErr = client.Do(req)
+			// wait a random amount of time to
+			// retry the request
+			fmt.Println("Trying to get story", id)
+			randtime := time.Duration(rand.Intn(5))
+			time.Sleep(randtime * time.Second)
+		}
 		log.Fatal(getErr)
 	}
 
