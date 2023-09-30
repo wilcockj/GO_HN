@@ -90,6 +90,7 @@ func isFromLastDay(story Item) bool {
 
 func main() {
 	// to change the flags on the default logger
+	// shows file and line number in log
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	client = http.Client{
 		Timeout: time.Second * 10,
@@ -187,6 +188,8 @@ func getNewStoryIds(stories []int) []int {
 		return stories[i] > stories[j]
 	})
 
+	// Gather a list of all previously
+	// unseen story ids
 	var unseenStories []int
 	var found_in_list bool
 	for _, id := range newStories {
@@ -213,6 +216,9 @@ func getStoryItemInfo(stories *[]int) []Item {
 		go GetStoryInfo(ch, id)
 	}
 
+	// filter out stories that are not posted
+	// in the last day
+	// TODO have sorting on the client side
 	var storyList []Item
 	for i := 0; i < storycount; i++ {
 		story := <-ch
@@ -257,12 +263,9 @@ func fetchStories() []int {
 }
 
 func GetStoryInfo(ch chan Item, id int) {
-	//fmt.Printf("Fetching story %d\n", id)
 	randtime := time.Duration(rand.Intn(5))
 	time.Sleep(randtime * time.Second)
 	url := "https://hacker-news.firebaseio.com/v0/item/" + strconv.Itoa(id) + ".json?print=pretty"
-
-	//fmt.Println(url)
 
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -273,16 +276,14 @@ func GetStoryInfo(ch chan Item, id int) {
 
 	res, getErr := client.Do(req)
 
-	if getErr != nil {
-		for getErr != nil {
-			res, getErr = client.Do(req)
-			// wait a random amount of time to
-			// retry the request
-			fmt.Println("Trying to get story", id)
-			randtime := time.Duration(rand.Intn(5))
-			time.Sleep(randtime * time.Second)
-		}
-		log.Fatal(getErr)
+	for getErr != nil {
+		res, getErr = client.Do(req)
+		// wait a random amount of time to
+		// retry the request
+		fmt.Println("Trying to get story", id)
+		randtime := time.Duration(rand.Intn(5))
+		time.Sleep(randtime * time.Second)
+
 	}
 
 	if res.Body != nil {
